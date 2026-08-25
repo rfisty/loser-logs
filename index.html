@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Verified User Database</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f5f5f5;
+    }
+
+    h1 {
+      margin-bottom: 15px;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .search-row input {
+      width: 320px;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #aaa;
+      border-radius: 5px;
+    }
+
+    #count {
+      margin: 10px 0;
+      color: #555;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      overflow-y: auto;
+      max-height: 75vh;
+      border: 1px solid #ccc;
+      background: white;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      white-space: nowrap;
+    }
+
+    th,
+    td {
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      text-align: left;
+    }
+
+    th {
+      background: #222;
+      color: white;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tr:nth-child(even) {
+      background: #f7f7f7;
+    }
+
+    tr:hover {
+      background: #e8e8e8;
+    }
+
+    .changed {
+      font-weight: bold;
+    }
+
+    .same-name {
+      color: #999;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>Verified User Database</h1>
+
+<div class="search-row">
+
+  <input
+    id="usernameSearch"
+    type="text"
+    placeholder="Search current or old (logged) username..."
+    autocomplete="off"
+  >
+
+  <input
+    id="userIdSearch"
+    type="text"
+    placeholder="Search user ID..."
+    autocomplete="off"
+    inputmode="numeric"
+  >
+
+</div>
+
+<div id="count">
+  Loading verified_users.json...
+</div>
+
+<div class="table-container">
+
+  <table>
+
+    <thead>
+      <tr>
+        <th>Current Username</th>
+        <th>User ID</th>
+        <th>Old / Logged Username</th>
+        <th>Hits</th>
+        <th>First Seen</th>
+        <th>Last Seen</th>
+      </tr>
+    </thead>
+
+    <tbody id="tableBody"></tbody>
+
+  </table>
+
+</div>
+
+<script>
+
+  let users = [];
+  let searchTimer = null;
+
+  const usernameSearch =
+    document.getElementById("usernameSearch");
+
+  const userIdSearch =
+    document.getElementById("userIdSearch");
+
+  const tableBody =
+    document.getElementById("tableBody");
+
+  const count =
+    document.getElementById("count");
+
+
+  fetch("verified_users.json")
+    .then(response => {
+
+      if (!response.ok) {
+        throw new Error("Could not load verified_users.json");
+      }
+
+      return response.json();
+
+    })
+    .then(data => {
+
+      users = data.filter(user =>
+        user.api_status === "found"
+      );
+
+      users.forEach(user => {
+
+        user._currentName =
+          String(user.current_username ?? "")
+            .toLowerCase();
+
+        user._oldName =
+          String(user.original_name ?? "")
+            .toLowerCase();
+
+        user._userId =
+          String(user.roblox_user_id ?? "");
+
+      });
+
+      renderTable(users);
+
+    })
+    .catch(error => {
+
+      console.error(error);
+
+      count.textContent =
+        "Error loading verified_users.json";
+
+    });
+
+
+  function escapeHTML(value) {
+
+    return String(value ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+
+  }
+
+
+  function renderTable(data) {
+
+    tableBody.innerHTML =
+      data.map(user => {
+
+        const currentUsername =
+          escapeHTML(user.current_username);
+
+        const oldUsername =
+          escapeHTML(user.original_name);
+
+        const userId =
+          escapeHTML(user.roblox_user_id);
+
+        const hits =
+          escapeHTML(user.hits);
+
+        const firstSeen =
+          escapeHTML(user.first_seen);
+
+        const lastSeen =
+          escapeHTML(user.last_seen);
+
+
+        const nameChanged =
+          String(user.current_username ?? "")
+            .toLowerCase()
+          !==
+          String(user.original_name ?? "")
+            .toLowerCase();
+
+
+        const oldNameDisplay =
+          nameChanged
+            ? `<span class="changed">${oldUsername}</span>`
+            : `<span class="same-name">—</span>`;
+
+
+        return `
+          <tr>
+            <td>${currentUsername}</td>
+            <td>${userId}</td>
+            <td>${oldNameDisplay}</td>
+            <td>${hits}</td>
+            <td>${firstSeen}</td>
+            <td>${lastSeen}</td>
+          </tr>
+        `;
+
+      }).join("");
+
+
+    count.textContent =
+      `${data.length.toLocaleString()} users`;
+
+  }
+
+
+  function performSearch() {
+
+    const usernameQuery =
+      usernameSearch.value
+        .trim()
+        .toLowerCase();
+
+    const idQuery =
+      userIdSearch.value
+        .trim();
+
+
+    const usernameActive =
+      usernameQuery.length >= 3;
+
+    const idActive =
+      idQuery.length >= 3;
+
+
+    /*
+      If neither box has at least 3 chars,
+      just show every row.
+    */
+
+    if (!usernameActive && !idActive) {
+
+      renderTable(users);
+
+      return;
+
+    }
+
+
+    const results =
+      users.filter(user => {
+
+        const matchesUsername =
+          !usernameActive ||
+          user._currentName.includes(usernameQuery) ||
+          user._oldName.includes(usernameQuery);
+
+
+        const matchesId =
+          !idActive ||
+          user._userId.includes(idQuery);
+
+
+        return (
+          matchesUsername &&
+          matchesId
+        );
+
+      });
+
+
+    renderTable(results);
+
+  }
+
+
+  function scheduleSearch() {
+
+    clearTimeout(searchTimer);
+
+
+    const usernameQuery =
+      usernameSearch.value.trim();
+
+    const idQuery =
+      userIdSearch.value.trim();
+
+
+    const usernameValid =
+      usernameQuery.length >= 3;
+
+    const idValid =
+      idQuery.length >= 3;
+
+
+    /*
+      If both searches are under 3 chars,
+      DO NOT SEARCH.
+      Just restore/show all users.
+    */
+
+    if (!usernameValid && !idValid) {
+
+      renderTable(users);
+
+      if (
+        usernameQuery.length > 0 ||
+        idQuery.length > 0
+      ) {
+
+        count.textContent =
+          `${users.length.toLocaleString()} users - type at least 3 characters to search`;
+
+      }
+
+      return;
+
+    }
+
+
+    count.textContent =
+      "Searching...";
+
+
+    searchTimer =
+      setTimeout(
+        performSearch,
+        200
+      );
+
+  }
+
+
+  usernameSearch.addEventListener(
+    "input",
+    scheduleSearch
+  );
+
+  userIdSearch.addEventListener(
+    "input",
+    scheduleSearch
+  );
+
+</script>
+
+</body>
+</html>
