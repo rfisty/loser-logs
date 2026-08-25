@@ -1,12 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
 
   <title>Verified User Database</title>
 
+
   <style>
+
     body {
       font-family: Arial, sans-serif;
       margin: 20px;
@@ -17,19 +25,38 @@
       margin-bottom: 15px;
     }
 
-    .search-row {
+    .controls {
       display: flex;
-      gap: 10px;
+      gap: 12px;
+      align-items: center;
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
 
-    .search-row input {
+    .controls input[type="text"] {
       width: 320px;
       padding: 10px;
       font-size: 16px;
       border: 1px solid #aaa;
       border-radius: 5px;
+    }
+
+    .clanner-filter {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 12px;
+      background: white;
+      border: 1px solid #aaa;
+      border-radius: 5px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .clanner-filter input {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
     }
 
     #count {
@@ -81,19 +108,34 @@
     .same-name {
       color: #999;
     }
+
+    .yes {
+      font-weight: bold;
+    }
+
+    .no {
+      color: #999;
+    }
+
   </style>
+
 </head>
+
 
 <body>
 
-<h1>Verified User Database</h1>
 
-<div class="search-row">
+<h1>
+  Verified User Database
+</h1>
+
+
+<div class="controls">
 
   <input
     id="usernameSearch"
     type="text"
-    placeholder="Search current or old (logged) username..."
+    placeholder="Search current or old username..."
     autocomplete="off"
   >
 
@@ -105,43 +147,77 @@
     inputmode="numeric"
   >
 
+  <label class="clanner-filter">
+
+    <input
+      type="checkbox"
+      id="clannerCheckbox"
+    >
+
+    Clanner
+
+  </label>
+
 </div>
 
+
 <div id="count">
-  Loading verified_users.json...
+  Loading database...
 </div>
+
 
 <div class="table-container">
 
-  <table>
+<table>
 
-    <thead>
-      <tr>
-        <th>Current Username</th>
-        <th>User ID</th>
-        <th>Old / Logged Username</th>
-        <th>Hits</th>
-        <th>First Seen</th>
-        <th>Last Seen</th>
-      </tr>
-    </thead>
+  <thead>
 
-    <tbody id="tableBody"></tbody>
+    <tr>
 
-  </table>
+      <th>Current Username</th>
+
+      <th>User ID</th>
+
+      <th>Old / Logged Username</th>
+
+      <th>Hits</th>
+
+      <th>First Seen</th>
+
+      <th>Last Seen</th>
+
+      <th>Clanner</th>
+
+    </tr>
+
+  </thead>
+
+  <tbody id="tableBody"></tbody>
+
+</table>
 
 </div>
+
 
 <script>
 
   let users = [];
+
+  let userPlaces = {};
+
+  let clannerPlaces = new Set();
+
   let searchTimer = null;
+
 
   const usernameSearch =
     document.getElementById("usernameSearch");
 
   const userIdSearch =
     document.getElementById("userIdSearch");
+
+  const clannerCheckbox =
+    document.getElementById("clannerCheckbox");
 
   const tableBody =
     document.getElementById("tableBody");
@@ -150,49 +226,147 @@
     document.getElementById("count");
 
 
-  fetch("verified_users.json")
-    .then(response => {
+  /*
+    Load:
 
-      if (!response.ok) {
-        throw new Error("Could not load verified_users.json");
-      }
+    verified_users.json
+    user_places.json
+    places.json
+  */
 
-      return response.json();
+  Promise.all([
 
-    })
-    .then(data => {
+    fetch("verified_users.json")
+      .then(response => {
 
-      users = data.filter(user =>
+        if (!response.ok) {
+          throw new Error(
+            "Could not load verified_users.json"
+          );
+        }
+
+        return response.json();
+
+      }),
+
+
+    fetch("user_places.json")
+      .then(response => {
+
+        if (!response.ok) {
+          throw new Error(
+            "Could not load user_places.json"
+          );
+        }
+
+        return response.json();
+
+      }),
+
+
+    fetch("places.json")
+      .then(response => {
+
+        if (!response.ok) {
+          throw new Error(
+            "Could not load places.json"
+          );
+        }
+
+        return response.json();
+
+      })
+
+  ])
+
+  .then(([
+    userData,
+    placeHistory,
+    placeList
+  ]) => {
+
+
+    /*
+      Keep verified users.
+    */
+
+    users = userData.filter(
+      user =>
         user.api_status === "found"
+    );
+
+
+    /*
+      Lookup:
+      verified user ID -> visited places
+    */
+
+    userPlaces =
+      placeHistory;
+
+
+    /*
+      Convert places.json to a Set
+      for fast lookup.
+    */
+
+    clannerPlaces =
+      new Set(
+        placeList.map(
+          placeId =>
+            String(placeId)
+        )
       );
 
-      users.forEach(user => {
 
-        user._currentName =
-          String(user.current_username ?? "")
-            .toLowerCase();
+    /*
+      Precompute search strings.
+    */
 
-        user._oldName =
-          String(user.original_name ?? "")
-            .toLowerCase();
+    users.forEach(user => {
 
-        user._userId =
-          String(user.roblox_user_id ?? "");
+      user._currentName =
+        String(
+          user.current_username ?? ""
+        ).toLowerCase();
 
-      });
 
-      renderTable(users);
+      user._oldName =
+        String(
+          user.original_name ?? ""
+        ).toLowerCase();
 
-    })
-    .catch(error => {
 
-      console.error(error);
-
-      count.textContent =
-        "Error loading verified_users.json";
+      user._userId =
+        String(
+          user.roblox_user_id ?? ""
+        );
 
     });
 
+
+    /*
+      Show every row at startup.
+    */
+
+    renderTable(users);
+
+  })
+
+  .catch(error => {
+
+    console.error(error);
+
+    count.textContent =
+      "Error loading data. Check browser console.";
+
+  });
+
+
+
+  /*
+    Escape HTML
+  */
 
   function escapeHTML(value) {
 
@@ -206,53 +380,171 @@
   }
 
 
+
+  /*
+    Check whether account visited
+    one of the current place IDs.
+  */
+
+  function isClanner(user) {
+
+    const userId =
+      String(
+        user.roblox_user_id ?? ""
+      );
+
+
+    const visitedPlaces =
+      userPlaces[userId] || [];
+
+
+    return visitedPlaces.some(
+      placeId =>
+        clannerPlaces.has(
+          String(placeId)
+        )
+    );
+
+  }
+
+
+
+  /*
+    Render table
+  */
+
   function renderTable(data) {
 
     tableBody.innerHTML =
       data.map(user => {
 
+
         const currentUsername =
-          escapeHTML(user.current_username);
+          escapeHTML(
+            user.current_username
+          );
+
 
         const oldUsername =
-          escapeHTML(user.original_name);
+          escapeHTML(
+            user.original_name
+          );
+
 
         const userId =
-          escapeHTML(user.roblox_user_id);
+          escapeHTML(
+            user.roblox_user_id
+          );
+
 
         const hits =
-          escapeHTML(user.hits);
+          escapeHTML(
+            user.hits
+          );
+
 
         const firstSeen =
-          escapeHTML(user.first_seen);
+          escapeHTML(
+            user.first_seen
+          );
+
 
         const lastSeen =
-          escapeHTML(user.last_seen);
+          escapeHTML(
+            user.last_seen
+          );
 
+
+        /*
+          Only show logged username
+          if it differs from current username.
+        */
 
         const nameChanged =
-          String(user.current_username ?? "")
-            .toLowerCase()
+
+          String(
+            user.current_username ?? ""
+          ).toLowerCase()
+
           !==
-          String(user.original_name ?? "")
-            .toLowerCase();
+
+          String(
+            user.original_name ?? ""
+          ).toLowerCase();
 
 
         const oldNameDisplay =
+
           nameChanged
-            ? `<span class="changed">${oldUsername}</span>`
-            : `<span class="same-name">—</span>`;
+
+            ? `
+              <span class="changed">
+                ${oldUsername}
+              </span>
+            `
+
+            : `
+              <span class="same-name">
+                —
+              </span>
+            `;
+
+
+        const clanner =
+          isClanner(user);
+
+
+        const clannerDisplay =
+
+          clanner
+
+            ? `
+              <span class="yes">
+                Yes
+              </span>
+            `
+
+            : `
+              <span class="no">
+                —
+              </span>
+            `;
 
 
         return `
+
           <tr>
-            <td>${currentUsername}</td>
-            <td>${userId}</td>
-            <td>${oldNameDisplay}</td>
-            <td>${hits}</td>
-            <td>${firstSeen}</td>
-            <td>${lastSeen}</td>
+
+            <td>
+              ${currentUsername}
+            </td>
+
+            <td>
+              ${userId}
+            </td>
+
+            <td>
+              ${oldNameDisplay}
+            </td>
+
+            <td>
+              ${hits}
+            </td>
+
+            <td>
+              ${firstSeen}
+            </td>
+
+            <td>
+              ${lastSeen}
+            </td>
+
+            <td>
+              ${clannerDisplay}
+            </td>
+
           </tr>
+
         `;
 
       }).join("");
@@ -264,6 +556,11 @@
   }
 
 
+
+  /*
+    Actual search/filter
+  */
+
   function performSearch() {
 
     const usernameQuery =
@@ -271,24 +568,39 @@
         .trim()
         .toLowerCase();
 
+
     const idQuery =
       userIdSearch.value
         .trim();
 
 
+    /*
+      Both text searches require
+      at least 3 characters.
+    */
+
     const usernameActive =
       usernameQuery.length >= 3;
+
 
     const idActive =
       idQuery.length >= 3;
 
 
+    const clannerActive =
+      clannerCheckbox.checked;
+
+
     /*
-      If neither box has at least 3 chars,
-      just show every row.
+      No filters active:
+      show everything.
     */
 
-    if (!usernameActive && !idActive) {
+    if (
+      !usernameActive &&
+      !idActive &&
+      !clannerActive
+    ) {
 
       renderTable(users);
 
@@ -300,20 +612,61 @@
     const results =
       users.filter(user => {
 
-        const matchesUsername =
-          !usernameActive ||
-          user._currentName.includes(usernameQuery) ||
-          user._oldName.includes(usernameQuery);
 
+        /*
+          Username search checks BOTH
+          current and old username.
+        */
+
+        const matchesUsername =
+
+          !usernameActive
+
+          ||
+
+          user._currentName.includes(
+            usernameQuery
+          )
+
+          ||
+
+          user._oldName.includes(
+            usernameQuery
+          );
+
+
+        /*
+          User ID search
+        */
 
         const matchesId =
-          !idActive ||
-          user._userId.includes(idQuery);
+
+          !idActive
+
+          ||
+
+          user._userId.includes(
+            idQuery
+          );
+
+
+        /*
+          Clanner filter
+        */
+
+        const matchesClanner =
+
+          !clannerActive
+
+          ||
+
+          isClanner(user);
 
 
         return (
           matchesUsername &&
-          matchesId
+          matchesId &&
+          matchesClanner
         );
 
       });
@@ -324,13 +677,21 @@
   }
 
 
+
+  /*
+    Delay text searching slightly.
+  */
+
   function scheduleSearch() {
 
-    clearTimeout(searchTimer);
+    clearTimeout(
+      searchTimer
+    );
 
 
     const usernameQuery =
       usernameSearch.value.trim();
+
 
     const idQuery =
       userIdSearch.value.trim();
@@ -339,29 +700,50 @@
     const usernameValid =
       usernameQuery.length >= 3;
 
+
     const idValid =
       idQuery.length >= 3;
 
 
     /*
-      If both searches are under 3 chars,
-      DO NOT SEARCH.
-      Just restore/show all users.
+      If neither search has 3 characters,
+      do NOT search text.
+
+      Show all rows, or only Clanners
+      if checkbox is checked.
     */
 
-    if (!usernameValid && !idValid) {
+    if (
+      !usernameValid &&
+      !idValid
+    ) {
 
-      renderTable(users);
 
       if (
-        usernameQuery.length > 0 ||
-        idQuery.length > 0
+        clannerCheckbox.checked
       ) {
 
-        count.textContent =
-          `${users.length.toLocaleString()} users - type at least 3 characters to search`;
+        performSearch();
 
       }
+
+      else {
+
+        renderTable(users);
+
+
+        if (
+          usernameQuery.length > 0 ||
+          idQuery.length > 0
+        ) {
+
+          count.textContent =
+            `${users.length.toLocaleString()} users — type at least 3 characters to search`;
+
+        }
+
+      }
+
 
       return;
 
@@ -381,17 +763,28 @@
   }
 
 
+
   usernameSearch.addEventListener(
     "input",
     scheduleSearch
   );
+
 
   userIdSearch.addEventListener(
     "input",
     scheduleSearch
   );
 
+
+  clannerCheckbox.addEventListener(
+    "change",
+    performSearch
+  );
+
+
 </script>
 
+
 </body>
+
 </html>
